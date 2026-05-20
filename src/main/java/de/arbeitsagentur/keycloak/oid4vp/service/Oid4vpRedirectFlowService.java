@@ -24,6 +24,8 @@ import de.arbeitsagentur.keycloak.oid4vp.domain.RequestObjectParams;
 import de.arbeitsagentur.keycloak.oid4vp.domain.SignedRequestObject;
 import de.arbeitsagentur.keycloak.oid4vp.util.DcqlQueryBuilder;
 import de.arbeitsagentur.keycloak.oid4vp.util.Oid4vpRequestObjectSigner;
+
+import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -206,6 +208,8 @@ public class Oid4vpRedirectFlowService {
     }
 
     private Map<String, Object> buildClientMetadata(Oid4vpJwk responseEncryptionKey) {
+        LOG.infof("Including client metadata in request object claims: response encryption key kid=%s", responseEncryptionKey.keyId());
+
         Map<String, Object> jwk =
                 parseJsonObject(responseEncryptionKey.toPublicJwk().toJson());
 
@@ -220,11 +224,26 @@ public class Oid4vpRedirectFlowService {
                 Map.of(
                         "issuerauth_alg_values", SUPPORTED_MDOC_ISSUERAUTH_ALG_VALUES,
                         "deviceauth_alg_values", SUPPORTED_MDOC_DEVICEAUTH_ALG_VALUES));
-
+        try {
+            LOG.infof("Supported VP formats and algorithms: %s", JsonSerialization.writeValueAsString(vpFormats));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
         var meta = new LinkedHashMap<String, Object>();
         meta.put("jwks", Map.of("keys", List.of(jwk)));
-        meta.put("encrypted_response_enc_values_supported", SUPPORTED_VERIFIER_RESPONSE_ENCRYPTION_METHOD_VALUES);
+        meta.put("encrypted_response_enc_values_supported", SUPPORTED_VERIFIER_RESPONSE_ENCRYPTION_METHOD_VALUES_TEST);
         meta.put("vp_formats_supported", vpFormats);
+        meta.put("application_type", "web");
+        meta.put("client_name", "https://www.google.com");
+        meta.put("client_id", "https://www.google.com");
+        meta.put("logo_uri", "https://www.google.com");
+        meta.put("request_uris", List.of("https://api-mcshared.dev.cstar.pagopa.it/auth-itn/realms/user/broker/it-wallet/endpoint"));
+        meta.put("response_uris", List.of());
+        try {
+            LOG.infof("Constructed client metadata: %s", JsonSerialization.writeValueAsString(meta));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
         return meta;
     }
 

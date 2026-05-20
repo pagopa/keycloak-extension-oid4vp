@@ -60,8 +60,8 @@ public final class Oid4vpConstants {
     public static final List<Integer> SUPPORTED_MDOC_ISSUERAUTH_ALG_VALUES =
             List.of(COSE_ALG_ES256, COSE_ALG_ES384, COSE_ALG_ES512);
     public static final List<Integer> SUPPORTED_MDOC_DEVICEAUTH_ALG_VALUES = SUPPORTED_MDOC_ISSUERAUTH_ALG_VALUES;
-    public static final List<String> SUPPORTED_VERIFIER_RESPONSE_ENCRYPTION_METHOD_VALUES =
-            List.of("A128GCM", "A256GCM");
+    public static final List<String> SUPPORTED_VERIFIER_RESPONSE_ENCRYPTION_METHOD_VALUES = List.of("A128GCM", "A256GCM");
+    public static final List<String> SUPPORTED_VERIFIER_RESPONSE_ENCRYPTION_METHOD_VALUES_TEST = List.of("A128CBC-HS256", "A256CBC-HS512" );
     public static final List<String> SUPPORTED_REQUEST_OBJECT_ENCRYPTION_ALGORITHMS = List.of("ECDH-ES");
     public static final List<String> SUPPORTED_REQUEST_OBJECT_ENCRYPTION_METHODS = List.of("A128GCM", "A256GCM");
 
