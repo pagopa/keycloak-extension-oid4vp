@@ -62,6 +62,7 @@ public class VpTokenProcessor {
             Duration trustListMaxCacheTtl,
             Duration issuerMetadataMaxCacheTtl,
             boolean strictX5cVerification,
+            boolean allowUntrustedX5cDevMode,
             int clockSkewSeconds,
             int kbJwtMaxAgeSeconds,
             List<X509Certificate> trustListSigningCerts,
@@ -81,7 +82,8 @@ public class VpTokenProcessor {
                 config.clockSkewSeconds(),
                 config.kbJwtMaxAgeSeconds(),
                 new JwtVcIssuerMetadataResolver(config.session(), config.issuerMetadataMaxCacheTtl()),
-                config.strictX5cVerification());
+                config.strictX5cVerification(),
+                config.allowUntrustedX5cDevMode());
         this.mdocVerifier = new MdocVerifier();
         this.trustListProvider = new TrustListProvider(
                 config.session(),

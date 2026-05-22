@@ -90,6 +90,8 @@ public class Oid4vpIdentityProviderConfig extends IdentityProviderModel implemen
 
     public static final String ENFORCE_HAIP = "enforceHaip";
 
+    public static final String ALLOW_UNTRUSTED_X5C_DEV_MODE = "allowUntrustedX5cDevMode";
+
     public Oid4vpIdentityProviderConfig() {
         super();
     }
@@ -264,6 +266,14 @@ public class Oid4vpIdentityProviderConfig extends IdentityProviderModel implemen
 
     public void setEnforceHaip(boolean enforce) {
         getConfig().put(ENFORCE_HAIP, String.valueOf(enforce));
+    }
+
+    public boolean isAllowUntrustedX5cDevMode() {
+        return getBoolConfig(ALLOW_UNTRUSTED_X5C_DEV_MODE, true);
+    }
+
+    public void setAllowUntrustedX5cDevMode(boolean allow) {
+        getConfig().put(ALLOW_UNTRUSTED_X5C_DEV_MODE, String.valueOf(allow));
     }
 
     public boolean isUseIdTokenSubject() {

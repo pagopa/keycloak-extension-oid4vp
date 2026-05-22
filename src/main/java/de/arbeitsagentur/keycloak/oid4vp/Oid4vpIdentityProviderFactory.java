@@ -70,6 +70,16 @@ public class Oid4vpIdentityProviderFactory extends AbstractIdentityProviderFacto
                 .defaultValue("true")
                 .add()
                 .property()
+                .name(Oid4vpIdentityProviderConfig.ALLOW_UNTRUSTED_X5C_DEV_MODE)
+                .label("Allow Untrusted SD-JWT x5c (DEV ONLY)")
+                .helpText("Dangerous test-only bypass. When enabled and no trust anchors are configured, "
+                        + "SD-JWT issuer signature verification accepts the leaf certificate public key from the x5c header "
+                        + "without validating the certificate chain. "
+                        + "Never enable this in production.")
+                .type(ProviderConfigProperty.BOOLEAN_TYPE)
+                .defaultValue("true")
+                .add()
+                .property()
                 .name(Oid4vpIdentityProviderConfig.RESPONSE_MODE)
                 .label("Response Mode")
                 .helpText("Response mode for wallet callbacks: direct_post or direct_post.jwt. "

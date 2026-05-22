@@ -42,9 +42,10 @@ public class SdJwtVerifier {
     private final JwtVcIssuerMetadataResolver issuerMetadataResolver;
     private final boolean strictX5cVerification;
     private final SdJwtPresentationConsumer presentationConsumer = new SdJwtPresentationConsumer();
+    private final boolean allowUntrustedX5cDevMode;
 
     public SdJwtVerifier(int clockSkewSeconds, int kbJwtMaxAgeSeconds) {
-        this(clockSkewSeconds, kbJwtMaxAgeSeconds, null, false);
+        this(clockSkewSeconds, kbJwtMaxAgeSeconds, null, false, false);
     }
 
     public SdJwtVerifier(
@@ -52,10 +53,20 @@ public class SdJwtVerifier {
             int kbJwtMaxAgeSeconds,
             JwtVcIssuerMetadataResolver issuerMetadataResolver,
             boolean strictX5cVerification) {
+        this(clockSkewSeconds, kbJwtMaxAgeSeconds, issuerMetadataResolver, strictX5cVerification, false);
+    }
+
+    public SdJwtVerifier(
+            int clockSkewSeconds,
+            int kbJwtMaxAgeSeconds,
+            JwtVcIssuerMetadataResolver issuerMetadataResolver,
+            boolean strictX5cVerification,
+            boolean allowUntrustedX5cDevMode) {
         this.clockSkewSeconds = clockSkewSeconds;
         this.kbJwtMaxAgeSeconds = kbJwtMaxAgeSeconds;
         this.issuerMetadataResolver = issuerMetadataResolver;
         this.strictX5cVerification = strictX5cVerification;
+        this.allowUntrustedX5cDevMode = allowUntrustedX5cDevMode;
     }
 
     public boolean isSdJwt(String token) {
@@ -103,7 +114,10 @@ public class SdJwtVerifier {
                     sdJwtVP,
                     requirements,
                     List.of(new Oid4vpTrustedSdJwtIssuer(
-                            trustedCertificates, issuerMetadataResolver, strictX5cVerification)),
+                            trustedCertificates,
+                            issuerMetadataResolver,
+                            strictX5cVerification,
+                            allowUntrustedX5cDevMode)),
                     issuerOpts,
                     kbOptsBuilder.build());
 

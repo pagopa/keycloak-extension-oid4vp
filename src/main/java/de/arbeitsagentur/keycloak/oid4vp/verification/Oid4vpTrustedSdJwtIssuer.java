@@ -16,11 +16,15 @@
 package de.arbeitsagentur.keycloak.oid4vp.verification;
 
 import de.arbeitsagentur.keycloak.oid4vp.verification.JwtVcIssuerMetadataResolver.ResolvedIssuerKey;
+
+import java.io.ByteArrayInputStream;
 import java.security.PublicKey;
+import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.ECPublicKey;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 import org.jboss.logging.Logger;
 import org.keycloak.common.VerificationException;
@@ -50,14 +54,16 @@ public class Oid4vpTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
     private final List<X509Certificate> trustedCertificates;
     private final JwtVcIssuerMetadataResolver issuerMetadataResolver;
     private final boolean strictX5cVerification;
+    private final boolean allowUntrustedX5cDevMode;
 
     public Oid4vpTrustedSdJwtIssuer(
             List<X509Certificate> trustedCertificates,
             JwtVcIssuerMetadataResolver issuerMetadataResolver,
-            boolean strictX5cVerification) {
+            boolean strictX5cVerification, boolean allowUntrustedX5cDevMode) {
         this.trustedCertificates = trustedCertificates != null ? List.copyOf(trustedCertificates) : List.of();
         this.issuerMetadataResolver = issuerMetadataResolver;
         this.strictX5cVerification = strictX5cVerification;
+        this.allowUntrustedX5cDevMode = allowUntrustedX5cDevMode;
     }
 
     @Override
@@ -115,14 +121,31 @@ public class Oid4vpTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
             return null;
         }
         if (trustedCertificates.isEmpty()) {
+            if (allowUntrustedX5cDevMode && !strictX5cVerification) {
+                LOG.warn("DEV MODE: accepting SD-JWT x5c leaf key without trust chain validation");
+                return List.of(toVerifierContext(extractLeafPublicKeyFromX5c(x5c)));
+            }
             throw new IllegalStateException("No trusted keys available for SD-JWT x5c signature verification");
         }
+
         try {
             PublicKey leafKey = X5cChainValidator.validateChain(x5c, trustedCertificates);
             LOG.debug("SD-JWT x5c chain validated against trust list, using leaf certificate key");
             return List.of(toVerifierContext(leafKey));
         } catch (Exception e) {
             throw new IllegalStateException("SD-JWT x5c validation failed: " + e.getMessage(), e);
+        }
+    }
+
+    private PublicKey extractLeafPublicKeyFromX5c(List<String> x5c) {
+        try {
+            byte[] certDer = Base64.getMimeDecoder().decode(x5c.get(0));
+            CertificateFactory cf = CertificateFactory.getInstance("X.509");
+            X509Certificate leaf = (X509Certificate) cf.generateCertificate(new ByteArrayInputStream(certDer));
+            leaf.checkValidity();
+            return leaf.getPublicKey();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to extract public key from SD-JWT x5c leaf certificate", e);
         }
     }
 
