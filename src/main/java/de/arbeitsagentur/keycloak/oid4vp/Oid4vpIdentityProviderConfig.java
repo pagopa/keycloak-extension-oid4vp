@@ -79,7 +79,7 @@ public class Oid4vpIdentityProviderConfig extends IdentityProviderModel implemen
     public static final String REQUEST_OBJECT_LIFESPAN_SECONDS = "requestObjectLifespanSeconds";
 
     public static final int DEFAULT_SSE_POLL_INTERVAL_MS = 2000;
-    public static final int DEFAULT_SSE_TIMEOUT_SECONDS = 120;
+    public static final int DEFAULT_SSE_TIMEOUT_SECONDS = 50;
     public static final int DEFAULT_SSE_PING_INTERVAL_SECONDS = 10;
     public static final int DEFAULT_CROSS_DEVICE_COMPLETE_TTL_SECONDS = 300;
     public static final int DEFAULT_CLOCK_SKEW_SECONDS = 60;

@@ -362,6 +362,14 @@ public class Oid4vpIdentityProvider extends AbstractIdentityProvider<Oid4vpIdent
                 + "/cross-device/status";
     }
 
+    private String buildCrossDeviceRefreshUrl() {
+        return Oid4vpConstants.buildEndpointBaseUrl(
+                        session.getContext().getUri().getBaseUri(),
+                        session.getContext().getRealm().getName(),
+                        getConfig().getAlias())
+                + "/cross-device/refresh";
+    }
+
     private Response buildLoginFormResponse(
             AuthenticationSessionModel authSession,
             RedirectFlowData redirectFlowData,
@@ -395,6 +403,7 @@ public class Oid4vpIdentityProvider extends AbstractIdentityProvider<Oid4vpIdent
                 .setAttribute("crossDeviceWalletUrl", crossDeviceWalletUrl)
                 .setAttribute("qrCodeBase64", redirectFlowData.qrCodeBase64())
                 .setAttribute("crossDeviceStatusUrl", crossDeviceEnabled ? buildCrossDeviceStatusUrl() : null)
+                .setAttribute("crossDeviceRefreshUrl", crossDeviceEnabled ? buildCrossDeviceRefreshUrl() : null)
                 .setAttribute("crossDevicePollIntervalMs", getConfig().getSsePollIntervalMs())
                 .createForm("login-oid4vp-idp.ftl");
     }

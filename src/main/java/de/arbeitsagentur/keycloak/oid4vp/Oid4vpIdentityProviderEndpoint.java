@@ -65,6 +65,7 @@ import org.keycloak.utils.StringUtil;
  *   <li>{@code GET|POST /request-object/{handle}} — serves the signed (and optionally encrypted)
  *       authorization request object to the wallet
  *   <li>{@code GET /cross-device/status} — SSE stream for cross-device login polling
+ *   <li>{@code POST /cross-device/refresh} — creates a fresh cross-device request handle and QR code
  *   <li>{@code GET /complete-auth} — finalizes authentication after the wallet's response is processed
  * </ul>
  *
@@ -403,6 +404,42 @@ public class Oid4vpIdentityProviderEndpoint {
             throw stopSseReconnects();
         }
         sseService.subscribe(requestHandle, eventSink, sse, expectedAuthSession);
+    }
+
+    @POST
+    @Path("/cross-device/refresh")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response refreshCrossDevice(@QueryParam(PARAM_REQUEST_HANDLE) String requestHandle) {
+        if (StringUtil.isBlank(requestHandle)) {
+            return responseFactory.jsonErrorResponse(
+                    Response.Status.BAD_REQUEST, "invalid_request", "Missing request handle parameter");
+        }
+
+        Oid4vpRequestObjectStore.FlowContextEntry flowContext =
+                requestObjectStore.resolveFlowHandle(session, requestHandle);
+        if (flowContext == null) {
+            return responseFactory.jsonErrorResponse(
+                    Response.Status.NOT_FOUND, "not_found", "Request handle not found or expired");
+        }
+        if (!FLOW_CROSS_DEVICE.equals(flowContext.flow())) {
+            return responseFactory.jsonErrorResponse(
+                    Response.Status.BAD_REQUEST, "invalid_request", "Request handle is not a cross-device flow");
+        }
+
+        AuthenticationSessionModel expectedAuthSession = directPostService.resolveExpectedAuthSession(requestHandle);
+        if (expectedAuthSession == null) {
+            return responseFactory.jsonErrorResponse(
+                    Response.Status.BAD_REQUEST, "session_expired", "Authentication session expired");
+        }
+        AuthenticationSessionModel currentBrowserSession =
+                authSessionResolver.resolveCurrentBrowserSession(expectedAuthSession);
+        if (!authSessionResolver.sameAuthenticationSession(currentBrowserSession, expectedAuthSession)) {
+            return responseFactory.jsonErrorResponse(
+                    Response.Status.BAD_REQUEST, "session_mismatch", "Browser session does not match");
+        }
+
+        return requestObjectService.refreshCrossDeviceFlow(
+                flowContext, session.getContext().getUri().getBaseUri(), realm.getName(), provider.getConfig().getAlias());
     }
 
     @GET

@@ -15,10 +15,12 @@
  */
 package de.arbeitsagentur.keycloak.oid4vp.service;
 
+import static de.arbeitsagentur.keycloak.oid4vp.domain.Oid4vpConstants.DEFAULT_WALLET_SCHEME;
 import static de.arbeitsagentur.keycloak.oid4vp.domain.Oid4vpConstants.REQUEST_OBJECT_CONTENT_TYPE;
 
 import de.arbeitsagentur.keycloak.oid4vp.Oid4vpIdentityProvider;
 import de.arbeitsagentur.keycloak.oid4vp.Oid4vpIdentityProviderConfig;
+import de.arbeitsagentur.keycloak.oid4vp.domain.Oid4vpConstants;
 import de.arbeitsagentur.keycloak.oid4vp.domain.Oid4vpJwk;
 import de.arbeitsagentur.keycloak.oid4vp.domain.Oid4vpResponseMode;
 import de.arbeitsagentur.keycloak.oid4vp.domain.PreparedDcqlQuery;
@@ -26,26 +28,34 @@ import de.arbeitsagentur.keycloak.oid4vp.domain.RequestObjectParams;
 import de.arbeitsagentur.keycloak.oid4vp.domain.SignedRequestObject;
 import de.arbeitsagentur.keycloak.oid4vp.domain.WalletMetadata;
 import de.arbeitsagentur.keycloak.oid4vp.util.Oid4vpAuthSessionResolver;
+import de.arbeitsagentur.keycloak.oid4vp.util.Oid4vpQrCodeService;
 import de.arbeitsagentur.keycloak.oid4vp.util.Oid4vpRequestObjectEncryptor;
 import de.arbeitsagentur.keycloak.oid4vp.util.Oid4vpRequestObjectStore;
+import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriBuilder;
+import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.jboss.logging.Logger;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.sessions.AuthenticationSessionModel;
+import org.keycloak.util.JsonSerialization;
 import org.keycloak.utils.StringUtil;
 
 /** Creates request objects and persists the request-scoped state bound to a stable flow handle. */
 public class Oid4vpRequestObjectService {
 
     private static final Logger LOG = Logger.getLogger(Oid4vpRequestObjectService.class);
+    private static final int QR_CODE_SIZE = 250;
 
     private final KeycloakSession session;
     private final Oid4vpIdentityProvider provider;
     private final Oid4vpRequestObjectStore requestObjectStore;
     private final Oid4vpAuthSessionResolver authSessionResolver;
     private final Oid4vpEndpointResponseFactory responseFactory;
+    private final Oid4vpQrCodeService qrCodeService;
 
     public Oid4vpRequestObjectService(
             KeycloakSession session,
@@ -58,6 +68,7 @@ public class Oid4vpRequestObjectService {
         this.requestObjectStore = requestObjectStore;
         this.authSessionResolver = authSessionResolver;
         this.responseFactory = responseFactory;
+        this.qrCodeService = new Oid4vpQrCodeService();
     }
 
     public Response generateRequestObject(String requestHandle, String walletNonce, String walletMetadataJson) {
@@ -120,6 +131,46 @@ public class Oid4vpRequestObjectService {
         } catch (Exception e) {
             cleanupRequestContext(requestContext);
             LOG.errorf(e, "Failed to generate request object: %s", e.getMessage());
+            return responseFactory.jsonErrorResponse(Response.Status.INTERNAL_SERVER_ERROR, "server_error", null);
+        }
+    }
+
+    public Response refreshCrossDeviceFlow(
+            Oid4vpRequestObjectStore.FlowContextEntry flowContext, URI baseUri, String realmName, String providerAlias) {
+        if (flowContext == null) {
+            return responseFactory.jsonErrorResponse(
+                    Response.Status.BAD_REQUEST, "invalid_request", "Missing flow context");
+        }
+
+        String newRequestHandle = UUID.randomUUID().toString();
+        requestObjectStore.storeFlowHandle(session, newRequestHandle, flowContext);
+
+        try {
+            URI requestUri = UriBuilder.fromUri(baseUri)
+                    .path("realms")
+                    .path(realmName)
+                    .path("broker")
+                    .path(providerAlias)
+                    .path("endpoint")
+                    .path("request-object")
+                    .path(newRequestHandle)
+                    .build();
+            String walletUrl = provider.getRedirectFlowService()
+                    .buildWalletAuthorizationUrl(DEFAULT_WALLET_SCHEME, flowContext.effectiveClientId(), requestUri)
+                    .toString();
+            String qrCodeBase64 = qrCodeService.generateQrCode(walletUrl, QR_CODE_SIZE, QR_CODE_SIZE);
+            String endpointBaseUrl = Oid4vpConstants.buildEndpointBaseUrl(baseUri, realmName, providerAlias);
+
+            String json = JsonSerialization.writeValueAsString(Map.of(
+                    "requestHandle", newRequestHandle,
+                    "walletUrl", walletUrl,
+                    "qrCodeBase64", qrCodeBase64,
+                    "statusUrl", endpointBaseUrl + "/cross-device/status",
+                    "refreshUrl", endpointBaseUrl + "/cross-device/refresh"));
+            return Response.ok(json).type(MediaType.APPLICATION_JSON).build();
+        } catch (Exception e) {
+            requestObjectStore.removeFlowHandle(session, newRequestHandle);
+            LOG.errorf(e, "Failed to refresh cross-device QR: %s", e.getMessage());
             return responseFactory.jsonErrorResponse(Response.Status.INTERNAL_SERVER_ERROR, "server_error", null);
         }
     }

@@ -140,7 +140,7 @@ Trust lists are cached until the earliest of ETSI `ListAndSchemeInformation.Next
 | Key | Description | Default |
 |-----|-------------|---------|
 | `ssePollIntervalMs` | How often each SSE connection polls shared completion state. | `2000` |
-| `sseTimeoutSeconds` | Maximum SSE connection lifetime before timeout. | `120` |
+| `sseTimeoutSeconds` | Maximum SSE connection lifetime before timeout. | `50` |
 | `ssePingIntervalSeconds` | Keep-alive ping interval. | `10` |
 | `crossDeviceCompleteTtlSeconds` | Lifetime of the cross-device completion marker. The deferred auth record itself uses the realm login timeout. | `300` |
 
