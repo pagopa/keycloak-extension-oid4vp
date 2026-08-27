@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16@sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94
     environment:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak
@@ -12,7 +12,7 @@ services:
       retries: 20
 
   oid4vc-dev:
-    image: ghcr.io/dominikschlosser/oid4vc-dev:v1.8.0
+    image: ghcr.io/dominikschlosser/oid4vc-dev:v1.8.0@sha256:ddf1e7ae5d0c9f228691f7f3921245878d323e14d5e4cc2c1b4a292d5305ea2c
     user: "0:0"
     entrypoint:
       - /bin/sh
@@ -100,7 +100,7 @@ services:
       - ../src/test/resources/realm-wallet-demo-local.json:/opt/keycloak/data/import/realm-wallet-demo-local.json:ro
 
   haproxy:
-    image: haproxy:3.1
+    image: haproxy:3.1@sha256:e17b7c578bdec8f289d5549b64de15b2f335c67f5dc687c949b59acac4edb9e4
     depends_on:
       keycloak-1:
         condition: service_healthy
