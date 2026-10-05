@@ -67,7 +67,7 @@ class Oid4vpRequestObjectStoreTest {
     @Test
     void resolveByStateAndKid_returnsRequestContextBoundToFlowHandle() {
         Oid4vpRequestObjectStore.FlowContextEntry flowContext = new Oid4vpRequestObjectStore.FlowContextEntry(
-                "root-session", "tab-1", "client-1", "https://example.com/endpoint", "same_device");
+                "root-session", "tab-1", "client-1", "https://example.com/endpoint", "same_device", 0);
         Oid4vpRequestObjectStore.RequestContextEntry requestContext = new Oid4vpRequestObjectStore.RequestContextEntry(
                 "handle-1",
                 "root-session",
@@ -93,7 +93,7 @@ class Oid4vpRequestObjectStoreTest {
     @Test
     void removeFlowHandle_invalidatesAllOutstandingRequestContextsForThatFlow() {
         Oid4vpRequestObjectStore.FlowContextEntry flowContext = new Oid4vpRequestObjectStore.FlowContextEntry(
-                "root-session", "tab-1", "client-1", "https://example.com/endpoint", "same_device");
+                "root-session", "tab-1", "client-1", "https://example.com/endpoint", "same_device", 0);
         Oid4vpRequestObjectStore.RequestContextEntry firstRequest = new Oid4vpRequestObjectStore.RequestContextEntry(
                 "handle-1",
                 "root-session",
@@ -144,7 +144,7 @@ class Oid4vpRequestObjectStoreTest {
     @Test
     void removeRequestContext_cleansOnlyTargetedStateAndKid() {
         Oid4vpRequestObjectStore.FlowContextEntry flowContext = new Oid4vpRequestObjectStore.FlowContextEntry(
-                "root-session", "tab-1", "client-1", "https://example.com/endpoint", "same_device");
+                "root-session", "tab-1", "client-1", "https://example.com/endpoint", "same_device", 0);
         Oid4vpRequestObjectStore.RequestContextEntry firstRequest = new Oid4vpRequestObjectStore.RequestContextEntry(
                 "handle-1",
                 "root-session",
@@ -220,7 +220,7 @@ class Oid4vpRequestObjectStoreTest {
         });
 
         Oid4vpRequestObjectStore.FlowContextEntry flowContext = new Oid4vpRequestObjectStore.FlowContextEntry(
-                "root-session", "tab-1", "client-1", "https://example.com/endpoint", "same_device");
+                "root-session", "tab-1", "client-1", "https://example.com/endpoint", "same_device", 0);
         Oid4vpRequestObjectStore.RequestContextEntry requestContext = new Oid4vpRequestObjectStore.RequestContextEntry(
                 "handle-1",
                 "root-session",
@@ -245,7 +245,7 @@ class Oid4vpRequestObjectStoreTest {
     @Test
     void removeFlowHandle_leavesNoValidSiblingStatesEvenIfTheyWereNotExplicitlyTracked() {
         Oid4vpRequestObjectStore.FlowContextEntry flowContext = new Oid4vpRequestObjectStore.FlowContextEntry(
-                "root-session", "tab-1", "client-1", "https://example.com/endpoint", "same_device");
+                "root-session", "tab-1", "client-1", "https://example.com/endpoint", "same_device", 0);
         Oid4vpRequestObjectStore.RequestContextEntry firstRequest = new Oid4vpRequestObjectStore.RequestContextEntry(
                 "handle-1",
                 "root-session",
@@ -295,5 +295,33 @@ class Oid4vpRequestObjectStoreTest {
         } catch (Exception e) {
             throw new IllegalStateException("Failed to generate test JWK", e);
         }
+    }
+
+    @Test
+    void expiredQr_isRejectedForRequestsButRetainedForAuthenticatedRefresh() {
+        var flow = new Oid4vpRequestObjectStore.FlowContextEntry(
+                "root-session", "tab-1", "client-1", "https://example.com/endpoint", "cross_device", 1L);
+        var request = new Oid4vpRequestObjectStore.RequestContextEntry(
+                "expired", "root-session", "tab-1", "state-expired", "client-1", "https://example.com/endpoint",
+                "cross_device", "nonce", KEY_JSON_1, "thumbprint", List.of());
+        store.storeFlowHandle(session, "expired", flow);
+        store.storeRequestContext(session, request);
+        store.storeKidIndex(session, "kid-1", request);
+
+        assertThat(store.resolveFlowHandle(session, "expired")).isNull();
+        assertThat(store.resolveByKid(session, "kid-1")).isNull();
+        assertThat(store.resolveByState(session, "state-expired")).isNull();
+        assertThat(store.resolveFlowHandle(session, "expired", false)).isEqualTo(flow);
+        store.removeFlowHandle(session, "expired");
+        assertThat(store.resolveFlowHandle(session, "expired", false)).isNull();
+    }
+
+    @Test
+    void activeQr_remainsUsableBeforeItsDeadline() {
+        var flow = new Oid4vpRequestObjectStore.FlowContextEntry(
+                "root-session", "tab-1", "client-1", "https://example.com/endpoint", "cross_device",
+                System.currentTimeMillis() + 120000);
+        store.storeFlowHandle(session, "active", flow);
+        assertThat(store.resolveFlowHandle(session, "active")).isEqualTo(flow);
     }
 }

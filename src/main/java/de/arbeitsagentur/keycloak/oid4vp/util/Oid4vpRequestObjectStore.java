@@ -63,7 +63,7 @@ public class Oid4vpRequestObjectStore {
     }
 
     public record FlowContextEntry(
-            String rootSessionId, String tabId, String effectiveClientId, String responseUri, String flow) {}
+            String rootSessionId, String tabId, String effectiveClientId, String responseUri, String flow, long expiresAt) {}
 
     public record RequestContextEntry(
             String requestHandle,
@@ -112,10 +112,21 @@ public class Oid4vpRequestObjectStore {
     }
 
     public FlowContextEntry resolveFlowHandle(KeycloakSession session, String requestHandle) {
+        return resolveFlowHandle(session, requestHandle, true);
+    }
+
+    public FlowContextEntry resolveFlowHandle(
+            KeycloakSession session, String requestHandle, boolean checkExpiration) {
         if (StringUtil.isBlank(requestHandle)) return null;
         Map<String, String> entry = session.singleUseObjects().get(REQUEST_HANDLE_PREFIX + requestHandle);
         if (entry == null) return null;
-        return deserializeEntry(entry.get(KEY_JSON), FlowContextEntry.class);
+        FlowContextEntry flowContext = deserializeEntry(entry.get(KEY_JSON), FlowContextEntry.class);
+        if (checkExpiration
+                && flowContext.expiresAt() > 0
+                && System.currentTimeMillis() >= flowContext.expiresAt()) {
+            return null;
+        }
+        return flowContext;
     }
 
     public RequestContextEntry resolveByState(KeycloakSession session, String state) {

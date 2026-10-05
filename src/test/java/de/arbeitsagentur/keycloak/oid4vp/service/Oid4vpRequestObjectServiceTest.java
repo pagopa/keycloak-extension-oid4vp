@@ -64,6 +64,7 @@ class Oid4vpRequestObjectServiceTest {
         Oid4vpIdentityProvider provider = mock(Oid4vpIdentityProvider.class);
         Oid4vpIdentityProviderConfig config = mock(Oid4vpIdentityProviderConfig.class);
         when(config.getAlias()).thenReturn("oid4vp");
+        when(config.getSseTimeoutSeconds()).thenReturn(120);
         when(config.isEnforceHaip()).thenReturn(true);
         when(config.getClientIdScheme()).thenReturn("x509_hash");
         when(config.getResolvedResponseMode()).thenReturn(Oid4vpResponseMode.DIRECT_POST_JWT);
@@ -92,7 +93,7 @@ class Oid4vpRequestObjectServiceTest {
     @Test
     void generateRequestObject_issuesFreshRequestContextForRepeatedFetches() throws Exception {
         Oid4vpRequestObjectStore.FlowContextEntry flowContext = new Oid4vpRequestObjectStore.FlowContextEntry(
-                "root-session", "tab-1", "effective-client", "https://example.com/endpoint", "same_device");
+                "root-session", "tab-1", "effective-client", "https://example.com/endpoint", "same_device", 0);
         when(store.resolveFlowHandle(session, "handle-1")).thenReturn(flowContext);
         when(redirectFlowService.createResponseEncryptionKey())
                 .thenReturn(Oid4vpJwk.generate("P-256", "ECDH-ES", "enc"))
@@ -130,7 +131,7 @@ class Oid4vpRequestObjectServiceTest {
     @Test
     void generateRequestObject_persistsRequestContextBeforeBuildingResponse() throws Exception {
         Oid4vpRequestObjectStore.FlowContextEntry flowContext = new Oid4vpRequestObjectStore.FlowContextEntry(
-                "root-session", "tab-1", "effective-client", "https://example.com/endpoint", "same_device");
+                "root-session", "tab-1", "effective-client", "https://example.com/endpoint", "same_device", 0);
         when(store.resolveFlowHandle(session, "handle-1")).thenReturn(flowContext);
         when(redirectFlowService.createResponseEncryptionKey())
                 .thenReturn(Oid4vpJwk.generate("P-256", "ECDH-ES", "enc"));
@@ -150,7 +151,7 @@ class Oid4vpRequestObjectServiceTest {
     @Test
     void generateRequestObject_buildFailure_cleansStoredRequestContext() throws Exception {
         Oid4vpRequestObjectStore.FlowContextEntry flowContext = new Oid4vpRequestObjectStore.FlowContextEntry(
-                "root-session", "tab-1", "effective-client", "https://example.com/endpoint", "same_device");
+                "root-session", "tab-1", "effective-client", "https://example.com/endpoint", "same_device", 0);
         when(store.resolveFlowHandle(session, "handle-1")).thenReturn(flowContext);
         when(redirectFlowService.createResponseEncryptionKey())
                 .thenReturn(Oid4vpJwk.generate("P-256", "ECDH-ES", "enc"));
@@ -162,5 +163,45 @@ class Oid4vpRequestObjectServiceTest {
         assertThat(response.getStatus()).isEqualTo(500);
         verify(store).storeRequestContext(eq(session), any(Oid4vpRequestObjectStore.RequestContextEntry.class));
         verify(store).removeRequestContext(eq(session), any(String.class));
+    }
+
+    @Test
+    void refreshCrossDevice_expiredQrGetsNewImageHandleAndDeadlineAndRevokesOldHandle() throws Exception {
+        var expired = new Oid4vpRequestObjectStore.FlowContextEntry(
+                "root-session", "tab-1", "effective-client", "https://example.com/endpoint", "cross_device", 1L);
+        when(redirectFlowService.buildWalletAuthorizationUrl(any(), any(), any()))
+                .thenAnswer(call -> URI.create("openid4vp://authorize?request_uri=" + call.getArgument(2)));
+        long before = System.currentTimeMillis();
+        Response response = service.refreshCrossDeviceFlow("old-handle", expired,
+                URI.create("https://example.com/"), "test-realm", "oid4vp");
+        long after = System.currentTimeMillis();
+        assertThat(response.getStatus()).isEqualTo(200);
+        var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree((String) response.getEntity());
+        assertThat(json.get("requestHandle").asText()).isNotEqualTo("old-handle");
+        assertThat(json.get("qrCodeBase64").asText()).isNotBlank();
+        assertThat(java.util.Base64.getDecoder().decode(json.get("qrCodeBase64").asText()))
+                .startsWith((byte) 0x89, (byte) 0x50, (byte) 0x4e, (byte) 0x47);
+        assertThat(json.get("expiresAt").asLong()).isBetween(before + 120000, after + 120000);
+        assertThat(json.get("serverTime").asLong()).isBetween(before, after);
+        var capture = ArgumentCaptor.forClass(Oid4vpRequestObjectStore.FlowContextEntry.class);
+        verify(store).storeFlowHandle(eq(session), eq(json.get("requestHandle").asText()), capture.capture());
+        assertThat(capture.getValue().expiresAt()).isEqualTo(json.get("expiresAt").asLong());
+        assertThat(capture.getValue().rootSessionId()).isEqualTo(expired.rootSessionId());
+        verify(store).removeFlowHandle(session, "old-handle");
+    }
+
+    @Test
+    void refreshCrossDevice_failureKeepsOldHandleAndRemovesUnusableReplacement() {
+        var flow = new Oid4vpRequestObjectStore.FlowContextEntry(
+                "root-session", "tab-1", "effective-client", "https://example.com/endpoint", "cross_device", 1L);
+        when(redirectFlowService.buildWalletAuthorizationUrl(any(), any(), any()))
+                .thenThrow(new IllegalStateException("generation failed"));
+        Response response = service.refreshCrossDeviceFlow("old-handle", flow,
+                URI.create("https://example.com/"), "test-realm", "oid4vp");
+        assertThat(response.getStatus()).isEqualTo(500);
+        verify(store, never()).removeFlowHandle(session, "old-handle");
+        var capture = ArgumentCaptor.forClass(String.class);
+        verify(store).removeFlowHandle(eq(session), capture.capture());
+        assertThat(capture.getValue()).isNotEqualTo("old-handle");
     }
 }

@@ -79,6 +79,8 @@
             <div id="oid4vp-cross-device-sse-config"
                  data-status-url="${crossDeviceStatusUrl!''}"
                  data-request-handle="${crossDeviceRequestHandle!''}"
+                 data-expires-at="${(qrCodeExpiresAt!0)?c}"
+                 data-server-time="${(qrCodeServerTime!0)?c}"
                  hidden></div>
             <script nonce="${cspNonce!}" src="${url.resourcesPath}/js/oid4vp-cross-device-sse.js"></script>
         </#if>

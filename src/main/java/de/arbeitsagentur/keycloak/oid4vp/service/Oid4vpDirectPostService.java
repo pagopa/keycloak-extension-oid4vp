@@ -231,6 +231,11 @@ public class Oid4vpDirectPostService {
 
         Oid4vpRequestObjectStore.FlowContextEntry flowContext =
                 requestObjectStore.resolveFlowHandle(session, requestHandle);
+        return resolveExpectedAuthSession(flowContext);
+    }
+
+    public AuthenticationSessionModel resolveExpectedAuthSession(
+            Oid4vpRequestObjectStore.FlowContextEntry flowContext) {
         if (flowContext == null) {
             return null;
         }

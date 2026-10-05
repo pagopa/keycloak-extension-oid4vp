@@ -342,7 +342,7 @@ class Oid4vpIdentityProviderEndpointTest {
     void crossDeviceStatus_withMismatchedBrowserSession_returnsNoContent() {
         when(store.resolveFlowHandle(session, "handle-1"))
                 .thenReturn(new Oid4vpRequestObjectStore.FlowContextEntry(
-                        "root-session", "tab-1", "effective-client", "https://example.com/endpoint", "cross_device"));
+                        "root-session", "tab-1", "effective-client", "https://example.com/endpoint", "cross_device", 0));
         when(context.getAuthenticationSession()).thenReturn(null);
 
         assertThatThrownBy(() -> endpoint.crossDeviceStatus("handle-1", null, null))
@@ -385,5 +385,33 @@ class Oid4vpIdentityProviderEndpointTest {
                 encryptionKeyJson,
                 "thumbprint",
                 List.of());
+    }
+
+    @Test
+    void refreshCrossDevice_rejectsExpiredQrWhenBrowserDoesNotOwnItsSession() {
+        when(store.resolveFlowHandle(session, "expired", false))
+                .thenReturn(new Oid4vpRequestObjectStore.FlowContextEntry(
+                        "root-session", "tab-1", "client-1", "https://example.com/endpoint", "cross_device", 1L));
+        Response response = endpoint.refreshCrossDevice("expired");
+        assertThat(response.getStatus()).isEqualTo(400);
+        assertThat((String) response.getEntity()).contains("session_mismatch");
+        verify(store, never()).storeFlowHandle(any(), any(), any());
+    }
+
+    @Test
+    void refreshCrossDevice_allowsExpiredQrOnlyForItsOwningBrowser() {
+        when(store.resolveFlowHandle(session, "expired", false))
+                .thenReturn(new Oid4vpRequestObjectStore.FlowContextEntry(
+                        "root-session", "tab-1", "client-1", "https://example.com/endpoint", "cross_device", 1L));
+        when(context.getAuthenticationSession()).thenReturn(authSession);
+        when(config.getSseTimeoutSeconds()).thenReturn(120);
+        var redirect = mock(de.arbeitsagentur.keycloak.oid4vp.service.Oid4vpRedirectFlowService.class);
+        when(provider.getRedirectFlowService()).thenReturn(redirect);
+        when(redirect.buildWalletAuthorizationUrl(any(), any(), any()))
+                .thenAnswer(call -> URI.create("openid4vp://authorize?request_uri=" + call.getArgument(2)));
+        Response response = endpoint.refreshCrossDevice("expired");
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat((String) response.getEntity()).contains("expiresAt");
+        verify(store).removeFlowHandle(session, "expired");
     }
 }

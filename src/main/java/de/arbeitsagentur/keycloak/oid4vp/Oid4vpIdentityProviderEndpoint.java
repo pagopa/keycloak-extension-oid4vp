@@ -416,7 +416,7 @@ public class Oid4vpIdentityProviderEndpoint {
         }
 
         Oid4vpRequestObjectStore.FlowContextEntry flowContext =
-                requestObjectStore.resolveFlowHandle(session, requestHandle);
+                requestObjectStore.resolveFlowHandle(session, requestHandle, false);
         if (flowContext == null) {
             return responseFactory.jsonErrorResponse(
                     Response.Status.NOT_FOUND, "not_found", "Request handle not found or expired");
@@ -426,7 +426,7 @@ public class Oid4vpIdentityProviderEndpoint {
                     Response.Status.BAD_REQUEST, "invalid_request", "Request handle is not a cross-device flow");
         }
 
-        AuthenticationSessionModel expectedAuthSession = directPostService.resolveExpectedAuthSession(requestHandle);
+        AuthenticationSessionModel expectedAuthSession = directPostService.resolveExpectedAuthSession(flowContext);
         if (expectedAuthSession == null) {
             return responseFactory.jsonErrorResponse(
                     Response.Status.BAD_REQUEST, "session_expired", "Authentication session expired");
@@ -439,7 +439,7 @@ public class Oid4vpIdentityProviderEndpoint {
         }
 
         return requestObjectService.refreshCrossDeviceFlow(
-                flowContext, session.getContext().getUri().getBaseUri(), realm.getName(), provider.getConfig().getAlias());
+                requestHandle, flowContext, session.getContext().getUri().getBaseUri(), realm.getName(), provider.getConfig().getAlias());
     }
 
     @GET

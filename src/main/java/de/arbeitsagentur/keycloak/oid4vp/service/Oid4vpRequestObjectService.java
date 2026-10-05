@@ -136,14 +136,22 @@ public class Oid4vpRequestObjectService {
     }
 
     public Response refreshCrossDeviceFlow(
-            Oid4vpRequestObjectStore.FlowContextEntry flowContext, URI baseUri, String realmName, String providerAlias) {
+            String oldRequestHandle, Oid4vpRequestObjectStore.FlowContextEntry flowContext, URI baseUri, String realmName, String providerAlias) {
         if (flowContext == null) {
             return responseFactory.jsonErrorResponse(
                     Response.Status.BAD_REQUEST, "invalid_request", "Missing flow context");
         }
 
         String newRequestHandle = UUID.randomUUID().toString();
-        requestObjectStore.storeFlowHandle(session, newRequestHandle, flowContext);
+        long expiresAt = System.currentTimeMillis() + provider.getConfig().getSseTimeoutSeconds() * 1000L;
+        Oid4vpRequestObjectStore.FlowContextEntry refreshedFlow = new Oid4vpRequestObjectStore.FlowContextEntry(
+                flowContext.rootSessionId(),
+                flowContext.tabId(),
+                flowContext.effectiveClientId(),
+                flowContext.responseUri(),
+                flowContext.flow(),
+                expiresAt);
+        requestObjectStore.storeFlowHandle(session, newRequestHandle, refreshedFlow);
 
         try {
             URI requestUri = UriBuilder.fromUri(baseUri)
@@ -166,7 +174,10 @@ public class Oid4vpRequestObjectService {
                     "walletUrl", walletUrl,
                     "qrCodeBase64", qrCodeBase64,
                     "statusUrl", endpointBaseUrl + "/cross-device/status",
-                    "refreshUrl", endpointBaseUrl + "/cross-device/refresh"));
+                    "refreshUrl", endpointBaseUrl + "/cross-device/refresh",
+                    "expiresAt", expiresAt,
+                    "serverTime", System.currentTimeMillis()));
+            requestObjectStore.removeFlowHandle(session, oldRequestHandle);
             return Response.ok(json).type(MediaType.APPLICATION_JSON).build();
         } catch (Exception e) {
             requestObjectStore.removeFlowHandle(session, newRequestHandle);

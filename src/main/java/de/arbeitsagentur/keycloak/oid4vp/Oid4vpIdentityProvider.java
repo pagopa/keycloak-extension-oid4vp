@@ -323,6 +323,9 @@ public class Oid4vpIdentityProvider extends AbstractIdentityProvider<Oid4vpIdent
                 loginContext.browserRouteTabId(),
                 loginContext.sessionCode(),
                 loginContext.clientData());
+        long expiresAt = FLOW_CROSS_DEVICE.equals(flow)
+                ? System.currentTimeMillis() + getConfig().getSseTimeoutSeconds() * 1000L
+                : 0;
         requestObjectStore.storeFlowHandle(
                 session,
                 requestHandle,
@@ -331,7 +334,8 @@ public class Oid4vpIdentityProvider extends AbstractIdentityProvider<Oid4vpIdent
                         loginContext.flowTabId(),
                         loginContext.effectiveClientId(),
                         responseUri,
-                        flow));
+                        flow,
+                        expiresAt));
 
         URI requestUri = request.getUriInfo()
                 .getBaseUriBuilder()
@@ -346,7 +350,7 @@ public class Oid4vpIdentityProvider extends AbstractIdentityProvider<Oid4vpIdent
         String walletUrl = redirectFlowService
                 .buildWalletAuthorizationUrl(walletScheme, loginContext.effectiveClientId(), requestUri)
                 .toString();
-        return new FlowEntry(requestHandle, formState, formActionUrl, walletUrl);
+        return new FlowEntry(requestHandle, formState, formActionUrl, walletUrl, expiresAt);
     }
 
     private String computeEffectiveClientId(String clientId) {
@@ -402,6 +406,8 @@ public class Oid4vpIdentityProvider extends AbstractIdentityProvider<Oid4vpIdent
                 .setAttribute("sameDeviceWalletUrl", sameDeviceWalletUrl)
                 .setAttribute("crossDeviceWalletUrl", crossDeviceWalletUrl)
                 .setAttribute("qrCodeBase64", redirectFlowData.qrCodeBase64())
+                .setAttribute("qrCodeExpiresAt", crossDeviceFlow != null ? crossDeviceFlow.expiresAt() : 0)
+                .setAttribute("qrCodeServerTime", System.currentTimeMillis())
                 .setAttribute("crossDeviceStatusUrl", crossDeviceEnabled ? buildCrossDeviceStatusUrl() : null)
                 .setAttribute("crossDeviceRefreshUrl", crossDeviceEnabled ? buildCrossDeviceRefreshUrl() : null)
                 .setAttribute("crossDevicePollIntervalMs", getConfig().getSsePollIntervalMs())
@@ -455,7 +461,7 @@ public class Oid4vpIdentityProvider extends AbstractIdentityProvider<Oid4vpIdent
             String sessionCode,
             String clientData) {}
 
-    record FlowEntry(String requestHandle, String formState, String formActionUrl, String walletUrl) {}
+    record FlowEntry(String requestHandle, String formState, String formActionUrl, String walletUrl, long expiresAt) {}
 
     record RedirectFlowData(FlowEntry sameDeviceFlow, FlowEntry crossDeviceFlow, String qrCodeBase64) {
         static final RedirectFlowData EMPTY = new RedirectFlowData(null, null, null);

@@ -1,4 +1,7 @@
 (function() {
+    var qrDeadline = null;
+    var qrTimer = null;
+
     function parseConfig(root) {
         if (!root) {
             return null;
@@ -18,11 +21,48 @@
         };
     }
 
+    function updateQrCountdown(expiresAt, serverTime) {
+        clearTimeout(qrTimer);
+        if (expiresAt !== undefined || serverTime !== undefined) {
+            expiresAt = Number(expiresAt);
+            serverTime = Number(serverTime);
+            qrDeadline = Number.isFinite(expiresAt) && expiresAt > 0
+                && Number.isFinite(serverTime) && serverTime > 0
+                ? Date.now() + expiresAt - serverTime : null;
+        }
+        if (qrDeadline === null) {
+            return;
+        }
+
+        var seconds = Math.max(0, Math.ceil((qrDeadline - Date.now()) / 1000));
+        if (seconds === 0) {
+            showQrExpiredStatus();
+            return;
+        }
+
+        var remaining = document.getElementById("oid4vp-qr-remaining");
+        if (remaining) {
+            remaining.textContent = String(seconds);
+        }
+        hideQrExpiredStatus();
+        qrTimer = setTimeout(updateQrCountdown, 250);
+    }
+
     function buildStatusUrl(config) {
         return config.statusUrl + "?request_handle=" + encodeURIComponent(config.requestHandle);
     }
 
     function showQrExpiredStatus() {
+        clearTimeout(qrTimer);
+        qrDeadline = 0;
+        if (window.__oid4vpSse) {
+            window.__oid4vpSse.close();
+        }
+        var qrCountdown = document.getElementById("oid4vp-qr-countdown");
+        if (qrCountdown) {
+            qrCountdown.hidden = true;
+            qrCountdown.setAttribute("aria-hidden", "true");
+        }
         var qrStatus = document.getElementById("oid4vp-qr-status");
 
         if (!qrStatus) {
@@ -34,6 +74,11 @@
     }
 
     function hideQrExpiredStatus() {
+        var qrCountdown = document.getElementById("oid4vp-qr-countdown");
+        if (qrCountdown) {
+            qrCountdown.hidden = false;
+            qrCountdown.setAttribute("aria-hidden", "false");
+        }
         var qrStatus = document.getElementById("oid4vp-qr-status");
 
         if (!qrStatus) {
@@ -103,7 +148,8 @@
     }
 
     function initOid4vpCrossDeviceSse(config) {
-        if (!config || !config.statusUrl || !config.requestHandle || !window.EventSource) {
+        if (!config || !config.statusUrl || !config.requestHandle || !window.EventSource
+            || (qrDeadline !== null && qrDeadline <= Date.now())) {
             return null;
         }
 
@@ -115,6 +161,8 @@
 
         function stop() {
             stopped = true;
+            clearTimeout(qrTimer);
+            window.removeEventListener("pagehide", stop);
             if (currentSource) {
                 currentSource.close();
             }
@@ -127,8 +175,12 @@
             currentSource = new EventSource(statusUrl);
 
             currentSource.addEventListener("complete", function(event) {
+                if (stopped) {
+                    return;
+                }
                 window.__oid4vpSseReady = true;
                 stop();
+                qrDeadline = null;
                 try {
                     var data = JSON.parse(event.data);
                     if (data.redirect_uri) {
@@ -144,12 +196,18 @@
             });
 
             currentSource.addEventListener("timeout", function() {
+                if (stopped) {
+                    return;
+                }
                 window.__oid4vpSseReady = true;
                 showQrExpiredStatus();
                 stop();
             });
 
             currentSource.addEventListener("expired", function() {
+                if (stopped) {
+                    return;
+                }
                 window.__oid4vpSseReady = true;
                 showQrExpiredStatus();
                 stop();
@@ -160,6 +218,9 @@
             };
 
             currentSource.onerror = function() {
+                if (stopped) {
+                    return;
+                }
                 window.__oid4vpSseReady = false;
 
                 if (currentSource && currentSource.readyState === EventSource.CLOSED) {
@@ -170,6 +231,7 @@
         }
 
         connect();
+        window.addEventListener("pagehide", stop);
 
         return {
             close: function() {
@@ -206,7 +268,9 @@
             })
                 .then(parseJsonResponse)
                 .then(function(data) {
-                    if (!data.requestHandle || !data.statusUrl || !data.qrCodeBase64) {
+                    if (!data.requestHandle || !data.statusUrl || !data.qrCodeBase64
+                        || !Number.isFinite(data.expiresAt) || !Number.isFinite(data.serverTime)
+                        || data.expiresAt <= data.serverTime) {
                         throw new Error("Refresh response is missing required data");
                     }
 
@@ -218,8 +282,7 @@
                     root.dataset.refreshUrl = data.refreshUrl || config.refreshUrl;
                     updateRequestHandle(root, oldRequestHandle, data.requestHandle);
                     updateQrCode(data);
-                    hideQrExpiredStatus();
-
+                    updateQrCountdown(data.expiresAt, data.serverTime);
                     window.__oid4vpSse = initOid4vpCrossDeviceSse({
                         statusUrl: data.statusUrl,
                         requestHandle: data.requestHandle
@@ -239,7 +302,19 @@
     var root = document.getElementById("oid4vp-cross-device-sse-config");
     var config = parseConfig(root);
     if (config) {
+        updateQrCountdown(root.dataset.expiresAt, root.dataset.serverTime);
         window.__oid4vpSse = initOid4vpCrossDeviceSse(config);
         initOid4vpRefresh(root);
+        window.addEventListener("pageshow", function(event) {
+            if (event.persisted) {
+                updateQrCountdown();
+                window.__oid4vpSse = initOid4vpCrossDeviceSse(parseConfig(root));
+            }
+        });
+        document.addEventListener("visibilitychange", function() {
+            if (!document.hidden) {
+                updateQrCountdown();
+            }
+        });
     }
 })();
