@@ -4,4 +4,4 @@ on: [ pull_request, workflow_dispatch ]
 
 jobs:
   commitlint:
-    uses: ba-itsys/actions/.github/workflows/commitlint.yaml@main
+    uses: ba-itsys/actions/.github/workflows/commitlint.yaml@8f812eb21318c797fe4d6a6e80cb32b15ffd745c # main
