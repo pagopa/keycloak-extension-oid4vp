@@ -149,19 +149,22 @@
 
     function initOid4vpCrossDeviceSse(config) {
         if (!config || !config.statusUrl || !config.requestHandle || !window.EventSource
-            || (qrDeadline !== null && qrDeadline <= Date.now())) {
+            || !Number.isFinite(qrDeadline) || qrDeadline <= Date.now()) {
             return null;
         }
 
         var statusUrl = buildStatusUrl(config);
         var currentSource = null;
         var stopped = false;
+        var reconnectTimer = null;
+        var retryDelay = 1000;
 
         window.__oid4vpSseReady = false;
 
         function stop() {
             stopped = true;
             clearTimeout(qrTimer);
+            clearTimeout(reconnectTimer);
             window.removeEventListener("pagehide", stop);
             if (currentSource) {
                 currentSource.close();
@@ -172,18 +175,30 @@
             if (stopped) {
                 return;
             }
+            if (qrDeadline <= Date.now()) {
+                showQrExpiredStatus();
+                stop();
+                return;
+            }
+            clearTimeout(reconnectTimer);
+            if (currentSource) {
+                currentSource.close();
+            }
             currentSource = new EventSource(statusUrl);
+            var source = currentSource;
+            window.__oid4vpSseReady = false;
+            reconnectTimer = setTimeout(connect, Math.min(45000, qrDeadline - Date.now()));
 
             currentSource.addEventListener("complete", function(event) {
-                if (stopped) {
+                if (stopped || currentSource !== source) {
                     return;
                 }
-                window.__oid4vpSseReady = true;
-                stop();
-                qrDeadline = null;
                 try {
                     var data = JSON.parse(event.data);
                     if (data.redirect_uri) {
+                        window.__oid4vpSseReady = true;
+                        stop();
+                        qrDeadline = null;
                         window.location.href = data.redirect_uri;
                     }
                 } catch (error) {
@@ -192,11 +207,15 @@
             });
 
             currentSource.addEventListener("ping", function() {
+                if (stopped || currentSource !== source) {
+                    return;
+                }
                 window.__oid4vpSseReady = true;
+                retryDelay = 1000;
             });
 
             currentSource.addEventListener("timeout", function() {
-                if (stopped) {
+                if (stopped || currentSource !== source) {
                     return;
                 }
                 window.__oid4vpSseReady = true;
@@ -205,7 +224,7 @@
             });
 
             currentSource.addEventListener("expired", function() {
-                if (stopped) {
+                if (stopped || currentSource !== source) {
                     return;
                 }
                 window.__oid4vpSseReady = true;
@@ -214,18 +233,23 @@
             });
 
             currentSource.onopen = function() {
+                if (stopped || currentSource !== source) {
+                    return;
+                }
                 window.__oid4vpSseReady = true;
             };
 
             currentSource.onerror = function() {
-                if (stopped) {
+                if (stopped || currentSource !== source) {
                     return;
                 }
                 window.__oid4vpSseReady = false;
 
-                if (currentSource && currentSource.readyState === EventSource.CLOSED) {
-                    showQrExpiredStatus();
-                    stop();
+                if (source.readyState === EventSource.CLOSED) {
+                    clearTimeout(reconnectTimer);
+                    reconnectTimer = setTimeout(connect,
+                        Math.min(retryDelay, Math.max(0, qrDeadline - Date.now())));
+                    retryDelay = Math.min(retryDelay * 2, 8000);
                 }
             };
         }
